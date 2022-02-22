@@ -1446,6 +1446,78 @@ void calc_anchors(char *datacfg, int num_of_clusters, int width, int height, int
 }
 
 
+network* load_network_hly(char *cfgfile, char *weightfile, int benchmark_layers)
+{
+    //test_detector("cfg/coco.data", argv[2], argv[3], filename, thresh, 0.5, 0, ext_output, 0, NULL, 0, 0);
+
+    network net = parse_network_cfg_custom(cfgfile, 1, 1); // set batch=1
+    if (weightfile) {
+        load_weights(&net, weightfile);
+    }
+    net.benchmark_layers = benchmark_layers;
+    fuse_conv_batchnorm(net);
+    calculate_binary_weights(net);
+#ifdef NNPACK
+    nnp_initialize();
+    net.threadpool = pthreadpool_create(4);
+#endif
+    network* net_ptr = (network*)xcalloc(1, sizeof(network));
+    memcpy(net_ptr, &net, sizeof(network));
+
+    return net_ptr;
+}
+
+detection* network_run_hly(network* net, image im, float thresh, float hier_thresh)
+{
+    //time= what_time_is_it_now();
+    float nms = .45;    // 0.4F
+    image sized;
+    if(0) sized = letterbox_image(im, net->w, net->h);
+    else sized = resize_image(im, net->w, net->h);
+    layer l = net->layers[net->n - 1];
+    float *X = sized.data;
+    double time = get_time_point();
+    network_predict(*net, X);
+    //network_predict_image(&net, im); letterbox = 1;
+    printf("network_run_hly Predicted in %lf milli-seconds.\n", ((double)get_time_point() - time) / 1000);
+    //printf("%s: Predicted in %f seconds.\n", input, (what_time_is_it_now()-time));
+
+    int nboxes = 0;
+    detection *dets = get_network_boxes(net, net->w, net->h, thresh, hier_thresh, 0, 1, &nboxes, 0);
+    //dets->nboxes = nboxes;
+    if (nms) {
+        if (l.nms_kind == DEFAULT_NMS) do_nms_sort(dets, nboxes, l.classes, nms);
+        else diounms_sort(dets, nboxes, l.classes, nms, l.nms_kind, l.beta_nms);
+    }
+    char datacfg[100] = "cfg/coco.data";
+    list *options = read_data_cfg(datacfg);
+    char *name_list = option_find_str(options, "names", "data/names.list");
+    int names_size = 0;
+    char **names = get_labels_custom(name_list, &names_size); //get_labels(name_list);
+
+    image **alphabet = load_alphabet();
+    
+    draw_detections_v3(im, dets, nboxes, thresh, names, alphabet, l.classes, 0);
+    
+    show_image(im, "predictions");
+    wait_until_press_key_cv();
+    destroy_all_windows_cv();
+
+    return dets;
+}
+
+void del_network_hly(network* net, detection *dets, int nboxes)
+{
+    free_detections(dets, nboxes);
+    
+    free_network(*net);
+#ifdef NNPACK
+    pthreadpool_destroy(net->threadpool);
+    nnp_deinitialize();
+#endif
+}
+
+
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh,
     float hier_thresh, int dont_show, int ext_output, int save_labels, char *outfile, int letter_box, int benchmark_layers)
 {

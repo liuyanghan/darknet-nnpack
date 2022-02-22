@@ -9,6 +9,10 @@
 #define _CRTDBG_MAP_ALLOC
 #endif
 
+#ifndef NNPACK
+#define NNPACK
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -800,6 +804,11 @@ typedef struct detection{
     int points; // bit-0 - center, bit-1 - top-left-corner, bit-2 - bottom-right-corner
 } detection;
 
+typedef struct detection_res{
+    detection* detects;
+    int detects_num;
+} detection_res;
+
 // matrix.h
 typedef struct matrix {
     int rows, cols;
@@ -899,6 +908,11 @@ LIB_API void free_network(network net);
 // network.c
 LIB_API load_args get_base_args(network *net);
 
+//darket.c
+LIB_API network* load_network_hly(char *cfgfile, char *weightfile, int benchmark_layers);
+LIB_API detection* network_run_hly(network* net, image im, float thresh, float hier_thresh);
+LIB_API void del_network_hly(network* net, detection *dets, int nboxes);
+
 // box.h
 LIB_API void do_nms_sort(detection *dets, int total, int classes, float thresh);
 LIB_API void do_nms_obj(detection *dets, int total, int classes, float thresh);
@@ -910,7 +924,9 @@ LIB_API float *network_predict_ptr(network *net, float *input);
 LIB_API detection *get_network_boxes(network *net, int w, int h, float thresh, float hier, int *map, int relative, int *num, int letter);
 LIB_API void free_detections(detection *dets, int n);
 LIB_API void fuse_conv_batchnorm(network net);
+LIB_API void fuse_conv_batchnorm_p(network* net);
 LIB_API void calculate_binary_weights(network net);
+LIB_API void calculate_binary_weights_p(network* net);
 LIB_API char *detection_to_json(detection *dets, int nboxes, int classes, char **names, long long int frame_id, char *filename);
 
 LIB_API layer* get_network_layer(network* net, int i);
